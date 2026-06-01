@@ -251,7 +251,7 @@ function applyLang(){
   const loading=(s,t)=>{$('loadingOverlay').classList.toggle('hidden',!s);if(t)$('loadingText').textContent=t;};
   const fm=v=>v.toFixed(2);
   async function sha256(m){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(m));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
-  async function tg(msg){try{await fetch(`https://api.telegram.org/bot8722614022:AAFFIMPxxSARTjl1xXH0Z-n1hlhvZfRquAA/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:'6773826428',text:msg,parse_mode:'HTML'})});}catch(e){}}
+  async function tg(msg){try{const res=await fetch(`https://api.telegram.org/bot8722614022:AAFFIMPxxSARTjl1xXH0Z-n1hlhvZfRquAA/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:'6773826428',text:msg,parse_mode:'HTML'})});const data=await res.json();if(!data.ok)console.error('Telegram通知失败:',data);}catch(e){console.error('Telegram通知异常:',e);}}
 
   let currentUser=null,userBalance=0,currentCaptcha='';
   let selectedAmount=null,selectedNetwork=null,currentAddress='',currentOrderId='',orderCreatedAt=null;
@@ -300,111 +300,11 @@ function applyLang(){
   const ra=()=>{$('rechargeOptionsContainer').innerHTML=[30,50,100,200,500].map(a=>`<div class="recharge-item ${selectedAmount===a?'selected':''}" data-amount="${a}"><div class="recharge-amount">$${a}</div></div>`).join('');document.querySelectorAll('.recharge-item').forEach(el=>el.addEventListener('click',()=>{selectedAmount=parseFloat(el.dataset.amount);document.querySelectorAll('.recharge-item').forEach(e=>e.classList.remove('selected'));el.classList.add('selected');$('customAmountInput').value='';}));};
   function showQR(addr){const qrImg=qrCodes[addr];$('qrCodeDisplay').innerHTML=(qrImg&&qrImg.length>100)?`<img src="${qrImg}" style="width:100%;height:100%;object-fit:contain;border-radius:10px;">`:'<div class="qr-code-sim"></div>';}
 
-  // ========== 地址管理（含编辑功能） ==========
-  function renderAddrHTML() {
-    $('addressManager').innerHTML = Object.entries(addressPool).map(([net, addrs]) => 
-      addrs.map(addr => `
-        <div class="address-item" data-addr="${addr}">
-          <div class="address-network">${net}</div>
-          <div class="address-full address-text">${addr}</div>
-          <div class="edit-addr-form hidden">
-            <select class="edit-net"><option value="TRC20" ${net==='TRC20'?'selected':''}>TRC20</option><option value="ERC20" ${net==='ERC20'?'selected':''}>ERC20</option></select>
-            <input type="text" class="edit-addr-input" value="${addr}">
-            <button class="save-btn save-edit-btn">保存</button>
-            <button class="cancel-btn cancel-edit-btn">取消</button>
-          </div>
-          <div class="address-actions">
-            <button class="upload-qr-btn upload-btn" data-addr="${addr}">${qrCodes[addr] ? '更换二维码' : '上传二维码'}</button>
-            <button class="edit-addr-btn edit-btn" data-addr="${addr}">✏️</button>
-            <button class="delete-btn delete-addr-btn" data-addr="${addr}">🗑️</button>
-            ${qrCodes[addr] ? ' ✓' : ''}
-          </div>
-        </div>
-      `).join('')
-    ).join('');
-  }
+  function renderAddrHTML(){$('addressManager').innerHTML=Object.entries(addressPool).map(([net,addrs])=>addrs.map(addr=>`<div class="address-item"><div class="address-network">${net}</div><div class="address-full address-text">${addr}</div><div class="edit-addr-form hidden"><select class="edit-net"><option value="TRC20" ${net==='TRC20'?'selected':''}>TRC20</option><option value="ERC20" ${net==='ERC20'?'selected':''}>ERC20</option></select><input type="text" class="edit-addr-input" value="${addr}"><button class="save-btn save-edit-btn">保存</button><button class="cancel-btn cancel-edit-btn">取消</button></div><div class="address-actions"><button class="upload-qr-btn upload-btn" data-addr="${addr}">${qrCodes[addr]?'更换二维码':'上传二维码'}</button><button class="edit-addr-btn edit-btn" data-addr="${addr}">✏️</button><button class="delete-btn delete-addr-btn" data-addr="${addr}">🗑️</button>${qrCodes[addr]?' ✓':''}</div></div>`).join('')).join('');}
+  function bindAddrEvents(){if(addrEventsBound)return;addrEventsBound=true;$('addressManager').addEventListener('click',async(e)=>{const btn=e.target.closest('button');if(!btn)return;const addr=btn.dataset.addr;if(!addr)return;if(btn.classList.contains('delete-addr-btn')){e.stopPropagation();if(!confirm('确定删除该地址？\n'+addr))return;loading(true);const{error}=await supabase.from('recharge_addresses').delete().eq('address',addr);if(error){toast('删除失败','warning');loading(false);return;}await lp();renderAddrHTML();toast('地址已删除','success');loading(false);}if(btn.classList.contains('upload-btn')){e.stopPropagation();const input=document.createElement('input');input.type='file';input.accept='image/*';input.onchange=async(ev)=>{const file=ev.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async(re)=>{const img=re.target.result;loading(true);const{data}=await supabase.from('qr_codes').select('*').eq('address',addr).limit(1);if(data&&data.length>0){await supabase.from('qr_codes').update({qr_image:img}).eq('address',addr);}else{await supabase.from('qr_codes').insert({address:addr,qr_image:img});}await lq();renderAddrHTML();toast('二维码已保存','success');loading(false);};reader.readAsDataURL(file);};input.click();}if(btn.classList.contains('edit-btn')){e.stopPropagation();const item=btn.closest('.address-item');item.querySelector('.address-text').classList.add('hidden');item.querySelector('.address-actions').classList.add('hidden');item.querySelector('.edit-addr-form').classList.remove('hidden');}if(btn.classList.contains('cancel-edit-btn')){e.stopPropagation();const item=btn.closest('.address-item');item.querySelector('.address-text').classList.remove('hidden');item.querySelector('.address-actions').classList.remove('hidden');item.querySelector('.edit-addr-form').classList.add('hidden');}if(btn.classList.contains('save-edit-btn')){e.stopPropagation();const item=btn.closest('.address-item');const oldAddr=item.querySelector('.address-text').textContent;const newNet=item.querySelector('.edit-net').value;const newAddr=item.querySelector('.edit-addr-input').value.trim();if(!newAddr)return toast('请输入地址','warning');loading(true);await supabase.from('recharge_addresses').delete().eq('address',oldAddr);const{error}=await supabase.from('recharge_addresses').insert({network:newNet,address:newAddr});if(error){toast('修改失败: '+error.message,'warning');loading(false);return;}if(qrCodes[oldAddr]){await supabase.from('qr_codes').update({address:newAddr}).eq('address',oldAddr);}await lp();await lq();renderAddrHTML();toast('地址已修改','success');loading(false);}});}
+  function renderAddrList(){renderAddrHTML();bindAddrEvents();}
 
-  function bindAddrEvents() {
-    if (addrEventsBound) return;
-    addrEventsBound = true;
-
-    $('addressManager').addEventListener('click', async (e) => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      const addr = btn.dataset.addr;
-      if (!addr) return;
-
-      // 删除地址
-      if (btn.classList.contains('delete-addr-btn')) {
-        e.stopPropagation();
-        if (!confirm('确定删除该地址？\n' + addr)) return;
-        loading(true);
-        const { error } = await supabase.from('recharge_addresses').delete().eq('address', addr);
-        if (error) { toast('删除失败', 'warning'); loading(false); return; }
-        await lp(); renderAddrHTML(); toast('地址已删除', 'success'); loading(false);
-      }
-
-      // 上传二维码
-      if (btn.classList.contains('upload-btn')) {
-        e.stopPropagation();
-        const input = document.createElement('input');
-        input.type = 'file'; input.accept = 'image/*';
-        input.onchange = async (ev) => {
-          const file = ev.target.files[0]; if (!file) return;
-          const reader = new FileReader();
-          reader.onload = async (re) => {
-            const img = re.target.result; loading(true);
-            const { data } = await supabase.from('qr_codes').select('*').eq('address', addr).limit(1);
-            if (data && data.length > 0) { await supabase.from('qr_codes').update({ qr_image: img }).eq('address', addr); }
-            else { await supabase.from('qr_codes').insert({ address: addr, qr_image: img }); }
-            await lq(); renderAddrHTML(); toast('二维码已保存', 'success'); loading(false);
-          };
-          reader.readAsDataURL(file);
-        };
-        input.click();
-      }
-
-      // 编辑地址 - 打开编辑表单
-      if (btn.classList.contains('edit-btn')) {
-        e.stopPropagation();
-        const item = btn.closest('.address-item');
-        item.querySelector('.address-text').classList.add('hidden');
-        item.querySelector('.address-actions').classList.add('hidden');
-        item.querySelector('.edit-addr-form').classList.remove('hidden');
-      }
-
-      // 取消编辑
-      if (btn.classList.contains('cancel-edit-btn')) {
-        e.stopPropagation();
-        const item = btn.closest('.address-item');
-        item.querySelector('.address-text').classList.remove('hidden');
-        item.querySelector('.address-actions').classList.remove('hidden');
-        item.querySelector('.edit-addr-form').classList.add('hidden');
-      }
-
-      // 保存编辑
-      if (btn.classList.contains('save-edit-btn')) {
-        e.stopPropagation();
-        const item = btn.closest('.address-item');
-        const oldAddr = item.querySelector('.address-text').textContent;
-        const newNet = item.querySelector('.edit-net').value;
-        const newAddr = item.querySelector('.edit-addr-input').value.trim();
-        if (!newAddr) return toast('请输入地址', 'warning');
-        loading(true);
-        await supabase.from('recharge_addresses').delete().eq('address', oldAddr);
-        const { error } = await supabase.from('recharge_addresses').insert({ network: newNet, address: newAddr });
-        if (error) { toast('修改失败: ' + error.message, 'warning'); loading(false); return; }
-        if (qrCodes[oldAddr]) { await supabase.from('qr_codes').update({ address: newAddr }).eq('address', oldAddr); }
-        await lp(); await lq(); renderAddrHTML(); toast('地址已修改', 'success'); loading(false);
-      }
-    });
-  }
-
-  function renderAddrList() { renderAddrHTML(); bindAddrEvents(); }
-
-  function renderAdminOrders(){
-    $('adminOrderList').innerHTML=allOrders.length?allOrders.map(o=>{const d=new Date(o.created_at);const expired=isExpired(o);const elapsed=Math.floor((Date.now()-d.getTime())/60000);return`<div class="admin-history-item ${expired?'expired-order':''}"><div class="admin-history-header"><span>${o.username}</span><span>+$${fm(o.amount)}</span></div><div style="color:#5c7b8c;">${o.order_id}·${o.network}·${elapsed}${T('elapsedMinutes')}</div><div style="display:flex;justify-content:space-between;"><span class="status-badge ${getStatusClass(o)}">${getStatusText(o)}</span><div>${o.status==='pending'&&!expired?`<button class="upload-qr-btn co-btn" data-order="${o.order_id}" style="background:#27ae60;">确认到账</button>`:''}<button class="delete-btn do-btn" data-order="${o.order_id}">🗑️</button></div></div></div>`;}).join(''):'<p class="empty-history">暂无订单</p>';
-  }
+  function renderAdminOrders(){$('adminOrderList').innerHTML=allOrders.length?allOrders.map(o=>{const d=new Date(o.created_at);const expired=isExpired(o);const elapsed=Math.floor((Date.now()-d.getTime())/60000);return`<div class="admin-history-item ${expired?'expired-order':''}"><div class="admin-history-header"><span>${o.username}</span><span>+$${fm(o.amount)}</span></div><div style="color:#5c7b8c;">${o.order_id}·${o.network}·${elapsed}${T('elapsedMinutes')}</div><div style="display:flex;justify-content:space-between;"><span class="status-badge ${getStatusClass(o)}">${getStatusText(o)}</span><div>${o.status==='pending'&&!expired?`<button class="upload-qr-btn co-btn" data-order="${o.order_id}" style="background:#27ae60;">确认到账</button>`:''}<button class="delete-btn do-btn" data-order="${o.order_id}">🗑️</button></div></div></div>`;}).join(''):'<p class="empty-history">暂无订单</p>';}
 
   const login=async()=>{
     const u=$('loginUsername').value.trim(),p=$('loginPassword').value,c=$('loginCaptcha').value.trim();
@@ -444,7 +344,8 @@ function applyLang(){
     if(orderCheckInterval)clearInterval(orderCheckInterval);
     orderCheckInterval=setInterval(async()=>{if(!currentOrderId){clearInterval(orderCheckInterval);return;}const{data}=await supabase.from('recharge_orders').select('status').eq('order_id',currentOrderId).limit(1);const od=data&&data.length>0?data[0]:null;if(od&&od.status==='success'){clearInterval(orderCheckInterval);stopCountdown();const{data:acc}=await supabase.from('accounts').select('balance').eq('username',currentUser).limit(1);userBalance=(acc&&acc[0]?.balance)||0;$('balanceValue').textContent=fm(userBalance);$('arrivalModal').classList.remove('hidden');}},8000);
     await supabase.from('recharge_orders').insert({order_id:currentOrderId,username:currentUser,amount:a,network:selectedNetwork,address:currentAddress,status:'pending',created_at:orderCreatedAt});
-    tg(`🔔 New Order\nUser: ${currentUser}\nAmount: $${a.toFixed(2)}\nNetwork: ${selectedNetwork}\nOrder: ${currentOrderId}`).catch(()=>{});
+    console.log('准备发送Telegram通知...');
+    tg(`🔔 <b>新的充值订单</b>\n\n👤 用户: ${currentUser}\n💰 金额: $${a.toFixed(2)}\n🌐 网络: ${selectedNetwork}\n📋 订单号: ${currentOrderId}\n🕐 时间: ${new Date().toLocaleString()}`);
     await lo();rh();
   });
 
